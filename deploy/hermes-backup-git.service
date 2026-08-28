@@ -1,0 +1,7 @@
+[Unit]
+Description=Hermes nightly git backup (brain + system repos)
+After=network-online.target docker.service
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/hermes/deploy/compose.env
+ExecStart=/opt/hermes/scripts/backup-nightly-git.sh

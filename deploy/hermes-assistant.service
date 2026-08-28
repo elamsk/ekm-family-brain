@@ -1,0 +1,28 @@
+# systemd unit for the Azure VM (NOT inside the container).
+# This is what makes the agent survive reboots and run with nobody logged in.
+#
+# Install:
+#   sudo cp hermes-assistant.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now hermes-assistant.service
+#
+# A system unit, not a --user unit: no lingering to forget, starts at boot
+# before any login, and survives the admin user being removed.
+[Unit]
+Description=Hermes family chief-of-staff (docker compose)
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/hermes/deploy
+EnvironmentFile=/opt/hermes/deploy/compose.env
+ExecStart=/usr/bin/docker compose up -d --remove-orphans
+ExecStop=/usr/bin/docker compose down
+ExecReload=/usr/bin/docker compose up -d --force-recreate
+TimeoutStartSec=0
+
+[Install]
+WantedBy=multi-user.target

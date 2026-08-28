@@ -1,0 +1,6 @@
+[Unit]
+Description=Hermes health check
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/hermes/deploy/compose.env
+ExecStart=/opt/hermes/scripts/health-check.sh

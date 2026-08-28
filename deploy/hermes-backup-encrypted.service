@@ -1,0 +1,11 @@
+[Unit]
+Description=Hermes weekly encrypted backup of the Hermes home
+After=network-online.target docker.service
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/hermes/deploy/compose.env
+# Passphrase is supplied as a systemd credential, root-readable only, and is
+# never written into this unit, the environment, or any file the agent can read.
+#   sudo systemd-creds encrypt --name=backup-passphrase - /etc/hermes/backup.cred
+LoadCredentialEncrypted=backup-passphrase:/etc/hermes/backup.cred
+ExecStart=/opt/hermes/scripts/backup-weekly-encrypted.sh

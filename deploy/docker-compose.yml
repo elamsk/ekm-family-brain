@@ -1,0 +1,57 @@
+# Two services, one image.
+#   gateway — Telegram front door + cron scheduler. This is the always-on one.
+#   webui   — local-only inspection UI. Bound to 127.0.0.1 deliberately.
+#
+# Start with:  docker compose up -d
+# Supervised by systemd on the VM: see hermes-assistant.service.
+services:
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: hermes-assistant:0.19.0
+    container_name: hermes-gateway
+    restart: unless-stopped
+    env_file:
+      - ${HERMES_HOME:-/opt/hermes/data}/.env
+    environment:
+      HERMES_HOME: /data
+      TZ: ${TZ:-UTC}
+    volumes:
+      # Hermes home on the VM's ext4 managed disk — real POSIX locking, WAL works.
+      - ${HERMES_HOME:-/opt/hermes/data}:/data
+      # The markdown brain, so the agent can read and write it directly.
+      - ${BRAIN_REPO:-/opt/hermes/workspace/family-brain}:/workspace/family-brain
+    command: ["hermes", "gateway", "run"]
+    healthcheck:
+      test: ["CMD", "hermes", "gateway", "status"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+      start_period: 60s
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }   # disk guard, part one
+
+  webui:
+    image: hermes-assistant:0.19.0
+    container_name: hermes-webui
+    restart: unless-stopped
+    depends_on: [gateway]
+    env_file:
+      - ${HERMES_HOME:-/opt/hermes/data}/.env
+    environment:
+      HERMES_HOME: /data
+      TZ: ${TZ:-UTC}
+    volumes:
+      - ${HERMES_HOME:-/opt/hermes/data}:/data
+      - ${BRAIN_REPO:-/opt/hermes/workspace/family-brain}:/workspace/family-brain
+    # 127.0.0.1 ONLY. Reach it with:  ssh -L 9119:127.0.0.1:9119 <vm>
+    # Never publish this port to the internet: it fronts an agent with mail,
+    # calendar, drive and shell access.
+    ports:
+      - "127.0.0.1:9119:9119"
+    command: ["hermes", "serve", "--host", "0.0.0.0", "--port", "9119", "--skip-build"]
+    logging:
+      driver: json-file
+      options: { max-size: "20m", max-file: "5" }

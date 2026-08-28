@@ -1,0 +1,8 @@
+[Unit]
+Description=Nightly git backup of the markdown brain and system config
+[Timer]
+OnCalendar=*-*-* 03:15
+Persistent=true
+RandomizedDelaySec=300
+[Install]
+WantedBy=timers.target
