@@ -9,7 +9,9 @@
 # .env and reference it by env var name, not by value.
 # ============================================================================
 
-timezone: "<TIMEZONE>"          # e.g. "Europe/Amsterdam". Drives all cron schedules.
+timezone: "America/Los_Angeles"          # IANA name, not "PDT" — the abbreviation is only correct
+                                       # half the year. This handles PDT/PST automatically
+                                       # and drives all Hermes cron schedules.
 
 # ─── Primary brain ──────────────────────────────────────────────────────────
 # Flash-tier: this workload is read-heavy (inbox, calendar, news, markdown),
