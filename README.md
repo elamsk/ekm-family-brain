@@ -41,6 +41,9 @@ RESTORE.md   disaster recovery runbook
 
 ## Status
 
-Phase 1 (install and configuration) is verified. Everything requiring an API
+Phase 1 (install and configuration) is verified. The agent is configured for a
+single user (Elam) and runs on his own Google account rather than a dedicated
+one — see `docs/SHARED-ACCOUNT-HARDENING.md` for what that means and the
+controls that compensate. Everything requiring an API key, the Google OAuth
+flow, a Telegram bot, or the Azure host is written but not yet exercised.
 key, a Google account, a Telegram bot, or the Azure host is written but not
-yet exercised — see the session notes and `docs/DEPLOY-AZURE.md`.

@@ -121,8 +121,11 @@ auxiliary:
 approvals:
   mode: "smart"                 # prompt before destructive actions
   cron_mode: "deny"             # UNATTENDED CONTEXT: deny, never prompt-and-wait.
-                                # This is the rule that makes the SOUL.md email
-                                # gate real. A cron job cannot talk its way past it.
+                                # Load-bearing. The agent runs on Elam's OWN Google
+                                # account, so every send needs approval (SOUL.md §1);
+                                # with no approver present, this makes a scheduled
+                                # send structurally impossible rather than merely
+                                # discouraged. See docs/SHARED-ACCOUNT-HARDENING.md.
   timeout: 60
   destructive_slash_confirm: true
   mcp_reload_confirm: true
