@@ -141,7 +141,7 @@ security:
 # ─── Memory ─────────────────────────────────────────────────────────────────
 memory:
   memory_enabled: true
-  user_profile_enabled: true    # lets it distinguish <NAME_1> from <NAME_2>
+  user_profile_enabled: true    # builds a model of Elam over time
   write_approval: false
 
 curator:                        # Phase 9.5 — prune/consolidate instead of growing forever
@@ -167,9 +167,21 @@ logging:
 
 # ─── Telegram (Phase 7) ─────────────────────────────────────────────────────
 # Bot token lives in .env as TELEGRAM_BOT_TOKEN.
-# allowed_chats is the "ignore strangers" control — comma-separated numeric IDs.
+#
+# `allow_from` is the "ignore strangers" control, and it is the ONLY one that
+# governs direct messages. It maps to TELEGRAM_ALLOWED_USERS and is fail-closed:
+# an empty value denies everyone rather than allowing everyone.
+#
+# Do NOT use `allowed_chats` for this. That key whitelists group/supergroup
+# chat IDs only — the adapter's own docstring reads "DMs are never filtered."
+# Setting it and expecting DM protection leaves the bot answering any stranger
+# who finds it.
+#
+# Values are NUMERIC Telegram user IDs, not @usernames. A username here will
+# never match, which fails closed (the bot ignores you) rather than open.
+# Get the number by messaging @userinfobot on Telegram.
 telegram:
-  allowed_chats: "<TELEGRAM_USER_ID_1>,<TELEGRAM_USER_ID_2>"
+  allow_from: "<TELEGRAM_USER_ID_1>"      # Elam — numeric ID, from @userinfobot
   reactions: true
 
 gateway:

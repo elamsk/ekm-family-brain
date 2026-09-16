@@ -5,7 +5,7 @@ is only as good as this file, and I have deliberately left it empty rather
 than guessing what you care about.
 
 ## Region
-<REGION>
+Bellevue, WA 98005
 
 ## Topics we want
 <!-- Be specific. "Tech" produces sludge; "EU AI regulation, semiconductor
@@ -31,7 +31,6 @@ than guessing what you care about.
 - One line each: the headline, then *why it matters to us*.
 - If nothing meets the bar on a given day, send nothing at all.
 
-## Per-person interests
-<!-- The agent distinguishes between us; note anything that is one of ours -->
-- <NAME_1>:
-- <NAME_2>:
+## Interests
+<!-- Single-user setup; anything here is Elam's -->
+-
