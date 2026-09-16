@@ -4,21 +4,124 @@ Nothing here has been run against a live Azure subscription — it is written
 from the verified local artifacts and needs a real host to prove out. Steps
 that cost money or create accounts are marked **[you]** and are yours to run.
 
+## 0. Region — everything lives in India
+
+Every Azure resource in this deployment is pinned to an Indian region. The
+region is a single variable so it is set once and inherited by the resource
+group, the VM, both disks, and the public IP.
+
+```bash
+export AZ_REGION=centralindia      # Pune
+```
+
+**Why `centralindia`:** of the Azure regions inside India it has the broadest
+VM SKU coverage and supports availability zones, which the others do not
+consistently. The alternatives, if you have a reason to prefer one:
+
+| Region | Location | Notes |
+|---|---|---|
+| `centralindia` | Pune | **default** — widest SKU coverage, availability zones |
+| `southindia` | Chennai | narrower SKU set, no availability zones |
+| `westindia` | Mumbai | narrowest SKU set; B-series not always offered |
+| `jioindiawest` | Jamnagar | Jio-operated; restricted service catalogue |
+| `jioindiacentral` | Nagpur | Jio-operated; restricted service catalogue |
+
+Confirm the size you want actually exists in your chosen region before
+provisioning, rather than discovering it on the `az vm create`:
+
+```bash
+az vm list-skus --location "$AZ_REGION" --size Standard_B2 --output table
+```
+
+If `Standard_B2s` is not offered, `Standard_B2ms` (2 vCPU / 8 GB) is the next
+step up and is widely available. Either is ample — the model runs in Google's
+cloud, not on this box.
+
+### What "hosted in India" does and does not cover
+
+This pins the **Azure** resources — compute, disks, public IP, and therefore
+the Hermes home, the SQLite state, and the encrypted backups while they sit on
+the VM. That part is genuinely in India.
+
+It does **not** make the whole system India-resident, and it would be wrong to
+assume otherwise:
+
+- **Model inference** goes to Google's Gemini API. Google decides where that
+  is served, and it is not bound by your Azure region.
+- **Gmail, Google Calendar, and Google Drive** — including the weekly
+  encrypted backup archives — are stored wherever Google places that account's
+  data, which you do not control from Azure.
+- **Telegram** relays every message through its own infrastructure.
+- **GitHub** holds the markdown brain and the system config.
+
+So household documents and conversation content still leave India by design in
+this architecture. If the goal is a compliance requirement — DPDP Act or
+similar — hosting the VM in India is necessary but **not sufficient**, and the
+above four are the gaps to close. Tell me if that is the driver and I will
+rework the design: Azure OpenAI in `centralindia` for inference, Azure Blob
+Storage in-region instead of Drive for backups, and Microsoft Graph in place of
+Gmail. That is a materially different build, which is why I have not assumed it.
+
+The encrypted weekly archive is the one piece where this is least bad: it is
+AES-256 encrypted before it ever leaves the VM, so Drive holds ciphertext only.
+
 ## 1. Provision the VM  **[you — this costs money]**
 
 ```bash
-az group create -n hermes-rg -l westeurope
+export AZ_REGION=centralindia
+
+az group create -n hermes-rg -l "$AZ_REGION"
+
 az vm create -g hermes-rg -n hermes-vm \
+  --location "$AZ_REGION" \
   --image Ubuntu2404 --size Standard_B2s \
   --admin-username azureuser --generate-ssh-keys \
   --public-ip-sku Standard --storage-sku StandardSSD_LRS
+
 # Data disk for the Hermes home, so it can be snapshotted separately
 az vm disk attach -g hermes-rg --vm-name hermes-vm --name hermes-data \
   --new --size-gb 32 --sku StandardSSD_LRS
 ```
 
+The disk inherits the VM's region, and the resource group's location sets the
+default for anything added later — but inheritance is a convention, not a
+guarantee, so verify it below rather than trusting it.
+
 **Network security group: open port 22 only.** Do not open 9119. The web UI is
 reached through an SSH tunnel — see ARCHITECTURE.md.
+
+### Verify every resource actually landed in India
+
+Run this after provisioning, and again after adding any resource later. It
+fails loudly if anything is outside India:
+
+```bash
+az resource list -g hermes-rg --query "[].{name:name, type:type, location:location}" -o table
+
+# Hard check — plain shell rather than a clever JMESPath query, so you can
+# read what it does. Lists any offender and exits 1.
+offenders=$(az resource list -g hermes-rg --query "[].{n:name,loc:location}" -o tsv \
+  | grep -vE '(centralindia|southindia|westindia|jioindiawest|jioindiacentral)$')
+
+if [ -n "$offenders" ]; then
+  echo "!! RESOURCES OUTSIDE INDIA:"; echo "$offenders"; exit 1
+else
+  echo "OK: every resource in hermes-rg is in an Indian region"
+fi
+```
+
+Check the storage location of the VM's disks too — they are separate resources
+and a snapshot or restore can land one elsewhere:
+
+```bash
+az disk list -g hermes-rg --query "[].{name:name, location:location}" -o table
+```
+
+To stop a stray resource being created elsewhere in future, pin the default:
+
+```bash
+az configure --defaults location=centralindia group=hermes-rg
+```
 
 ## 2. Prepare the host
 

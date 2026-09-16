@@ -39,6 +39,14 @@ more friction and less state.
 Google's cloud, not here. Put the Hermes home on a separate managed disk so
 you can snapshot it independently of the OS disk.
 
+**Region: `centralindia` (Pune).** All Azure resources are pinned to an Indian
+region by requirement. Central India is the default because it has the widest
+VM SKU coverage and availability-zone support of the Indian regions; South and
+West India are narrower. Note that this pins Azure only — inference (Gemini),
+mail and storage (Google), and messaging (Telegram) are all outside India in
+this design. DEPLOY-AZURE.md section 0 sets out exactly what that does and does
+not cover, and what an India-resident variant would have to change.
+
 **If you overrule me and want Container Apps anyway:** set `minReplicas: 1`,
 mount Azure Files for `/data`, and accept the DELETE-journal concurrency hit.
 It will work. It will just be slower and harder to debug for no saving.
