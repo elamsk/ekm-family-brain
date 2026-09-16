@@ -35,8 +35,11 @@ VM shape.
 logs`, and a shell in the container. Container Apps gives you a console with
 more friction and less state.
 
-**Sizing:** a `Standard_B2s` (2 vCPU, 4 GB) is enough — the model runs in
-Google's cloud, not here. Put the Hermes home on a separate managed disk so
+**Sizing:** currently provisioned at the minimum, `Standard_B1ms` (1 vCPU,
+2 GiB) plus a 2 GiB swapfile, because the model runs in Google's cloud and this
+box is mostly idle. `Standard_B2s` (2 vCPU, 4 GiB) is the comfortable size if
+the build or the gateway turns out to be tight. Sizes are env vars in
+`deploy/provision-azure.sh`; see DEPLOY-AZURE.md §0 for the trade-offs. Put the Hermes home on a separate managed disk so
 you can snapshot it independently of the OS disk.
 
 **Region: `centralindia` (Pune).** All Azure resources are pinned to an Indian

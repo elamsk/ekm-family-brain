@@ -1,5 +1,32 @@
 # Deploying to Azure
 
+## The one-command path
+
+```bash
+cd deploy
+./provision-azure.sh --dry-run     # read the plan first — touches nothing
+./provision-azure.sh               # create everything
+```
+
+It creates the resource group, VM, and data disk; verifies every resource is
+in India; ships this repo to the VM; and runs `bootstrap-vm.sh` there, which
+handles packages, swap, disk mount, image build, and systemd units. Idempotent
+— re-running skips what already exists. `--skip-create` re-runs just the
+bootstrap against an existing VM.
+
+It deliberately stops short of anything needing a secret or a browser: you
+fill `.env`, set the backup passphrase, and do the Google OAuth yourself. The
+script prints that checklist when it finishes.
+
+**Neither script has been run against a live Azure subscription.** The logic
+was tested offline against a stubbed `az` (region guard, SKU check, idempotency
+skips, dry-run output), and both pass `shellcheck -S warning`. Use `--dry-run`
+first and read what it intends to do — every step is a plain `az` command you
+could run by hand.
+
+The sections below are that same process, manually, if you prefer it.
+
+
 Nothing here has been run against a live Azure subscription — it is written
 from the verified local artifacts and needs a real host to prove out. Steps
 that cost money or create accounts are marked **[you]** and are yours to run.
@@ -13,6 +40,41 @@ group, the VM, both disks, and the public IP.
 ```bash
 export AZ_REGION=centralindia      # Pune
 ```
+
+### Sizing — minimum-cost defaults
+
+Configured for the smallest practical footprint. Everything is an env var, so
+you can size up later without editing anything:
+
+| Setting | Default | Why |
+|---|---|---|
+| `VM_SIZE` | `Standard_B1ms` (1 vCPU, 2 GiB) | smallest that reliably builds and runs the image |
+| `OS_DISK_SKU` | `Standard_LRS` (HDD) | cheapest; the OS disk is not latency-sensitive |
+| `DATA_DISK_SKU` | `StandardSSD_LRS` | SQLite lives here — worth the small premium |
+| `DATA_DISK_GB` | `16` | markdown, config and state are tiny; backups prune |
+| `SWAP_GB` | `2` | Azure Ubuntu ships with none; turns an OOM kill into slowness |
+
+**On `Standard_B1s` (1 GiB).** It is the cheapest burstable size, and the
+script will use it if you ask, but the docker build is the memory peak and on
+1 GiB it will most likely be OOM-killed. The swapfile helps and it may
+complete, slowly. `B1ms` is the realistic floor. If a build dies, check
+`dmesg | grep -i 'killed process'` before suspecting anything else.
+
+The model runs in Google's cloud, so CPU here is mostly idle — RAM during the
+build is the binding constraint, not steady-state compute.
+
+**Costs change and vary by region, so this repo does not quote prices.** Check
+the current figures for your subscription before committing:
+
+```bash
+az vm list-skus --location "$AZ_REGION" --resource-type virtualMachines \
+  --query "[?name=='Standard_B1ms']" -o table
+```
+
+Then the Azure Pricing Calculator for the VM, both disks, and the public IP.
+The public IP and disks are billed whether or not the VM is running — so
+`az vm deallocate` reduces cost but does not eliminate it. To stop charges
+entirely, delete the resource group (the script prints that command).
 
 **Why `centralindia`:** of the Azure regions inside India it has the broadest
 VM SKU coverage and supports availability zones, which the others do not
