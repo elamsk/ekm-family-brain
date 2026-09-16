@@ -184,7 +184,7 @@ logging:
 # never match, which fails closed (the bot ignores you) rather than open.
 # Get the number by messaging @userinfobot on Telegram.
 telegram:
-  allow_from: "<TELEGRAM_USER_ID_1>"      # Elam — numeric ID, from @userinfobot
+  allow_from: "701220126"              # Elam — numeric Telegram user ID (@Elamsk)
   reactions: true
 
 gateway:
