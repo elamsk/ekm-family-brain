@@ -157,8 +157,10 @@ fi
 
 say "Running bootstrap-vm.sh on the VM"
 if [ "$DRY_RUN" = 0 ]; then
+  # No -t: forcing a pty while stdin is a heredoc can swallow the remote
+  # script's output, which is how a failed bootstrap looked like a clean run.
   # shellcheck disable=SC2029  # we want SWAP_GB expanded locally
-  ssh -t "$ADMIN_USER@$IP" "SWAP_GB=$SWAP_GB bash -s" <<'REMOTE'
+  ssh "$ADMIN_USER@$IP" "SWAP_GB=$SWAP_GB bash -s" <<'REMOTE'
 set -euo pipefail
 sudo mkdir -p /opt/hermes
 sudo chown -R "$USER" /opt/hermes
