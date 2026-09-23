@@ -116,6 +116,32 @@ docker restart hermes-gateway hermes-webui
 `bootstrap-vm.sh` does this automatically; you only hit it restoring by hand or
 after copying files in as another user. Editing `.env` afterwards needs `sudo`.
 
+**Gateway runs but no messaging platform connects**
+```
+WARNING gateway.platform_registry: Platform 'Telegram' requirements not met
+       (pip install 'hermes-agent[telegram]')
+ERROR   gateway.run: No adapter available for telegram
+```
+The hint is wrong — 0.19.0 has no `telegram` extra. python-telegram-bot ships in
+`messaging`. The image must be built with the extras:
+```bash
+cd /opt/hermes/deploy && docker compose build && docker compose up -d
+```
+`deploy/Dockerfile` installs `hermes-agent[messaging,google,web]`. The gateway
+still runs cron jobs without them, so this fails quietly rather than loudly.
+
+**Editing anything under /opt/hermes/data**
+Use `sudoedit`, which preserves ownership and mode:
+```bash
+SUDO_EDITOR=nano sudo -e /opt/hermes/data/.env
+```
+`sudo nano` and especially `sudo sed -i` can leave the file root-owned, and the
+container (uid 10001) then cannot read it — the gateway crash-loops with
+`PermissionError: '/data/.env'`. After any such edit:
+```bash
+sudo chown 10001:10001 /opt/hermes/data/<file> && docker restart hermes-gateway
+```
+
 **Disk full** — the disk guard should have warned. Manually:
 ```bash
 /opt/hermes/scripts/disk-guard.sh

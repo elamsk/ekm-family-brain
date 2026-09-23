@@ -23,7 +23,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Pin the version. An always-on agent should not silently change brain
 # surgeons because a new release landed overnight.
 ARG HERMES_VERSION=0.19.0
-RUN pip install --no-cache-dir "hermes-agent==${HERMES_VERSION}"
+
+# Extras, and why each is here. A bare `pip install hermes-agent` starts the
+# gateway but cannot create ANY messaging adapter — it fails at runtime with
+#   Platform 'Telegram' requirements not met (pip install 'hermes-agent[telegram]')
+# That hint is wrong: 0.19.0 has no `telegram` extra. python-telegram-bot ships
+# in `messaging`. Verified against the released metadata, not the message.
+#
+#   messaging -> python-telegram-bot (Telegram front door, Phase 7)
+#   google    -> google-api-python-client + auth (Gmail/Calendar/Drive, Phase 3/6)
+#   web       -> fastapi/uvicorn for `hermes serve` (the local-only web UI)
+#
+# Deliberately NOT `[all]`: it drags in computer-use, voice, and a dozen
+# integrations we do not use — a slower build on a 2 GiB VM and more surface
+# on a host holding our credentials.
+ARG HERMES_EXTRAS=messaging,google,web
+RUN pip install --no-cache-dir "hermes-agent[${HERMES_EXTRAS}]==${HERMES_VERSION}"
 
 RUN useradd --create-home --uid 10001 hermes \
     && mkdir -p /data /workspace \
