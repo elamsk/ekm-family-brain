@@ -203,6 +203,26 @@ telegram:
     - "701220126"                      # Elam — numeric Telegram user ID (@Elamsk)
   reactions: true
 
+# ─── Web UI (hermes serve) ──────────────────────────────────────────────────
+# The compose file runs `hermes serve --host 0.0.0.0` inside the container so
+# the host's 127.0.0.1:9119 port mapping can reach it. Hermes treats 0.0.0.0 as
+# a NON-LOOPBACK bind, and since the June 2026 hardening that ALWAYS requires
+# an auth provider — `--insecure` is accepted but ignored. With none set the
+# container refuses to start and crash-loops, which is what hermes-webui was
+# doing.
+#
+# Set the password on the VM only, NEVER here — this file is committed:
+#   docker exec hermes-gateway hermes config set dashboard.basic_auth.username <you>
+#   docker exec hermes-gateway hermes config set dashboard.basic_auth.password '<strong>'
+#
+# Defence in depth, all three: the port is published on 127.0.0.1 only, reached
+# through an SSH tunnel, and behind this password. Do not open 9119 in the NSG.
+dashboard:
+  basic_auth:
+    username: ""                # set on the VM, not in git
+    password: ""                # set on the VM, not in git
+    session_ttl_seconds: 43200  # 12h
+
 gateway:
   delivery_ledger: true         # dedupes delivery across restarts
   strict: false
