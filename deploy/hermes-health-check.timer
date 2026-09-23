@@ -1,0 +1,8 @@
+[Unit]
+Description=Health check — services, disk, cron runs, backup freshness
+[Timer]
+OnCalendar=*-*-* 08:00 America/Los_Angeles
+OnCalendar=*-*-* 20:00 America/Los_Angeles
+Persistent=true
+[Install]
+WantedBy=timers.target

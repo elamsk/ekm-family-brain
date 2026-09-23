@@ -1,0 +1,7 @@
+[Unit]
+Description=Disk guard — oversized logs and disk pressure
+[Timer]
+OnCalendar=hourly
+Persistent=true
+[Install]
+WantedBy=timers.target

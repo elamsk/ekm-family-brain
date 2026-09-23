@@ -1,0 +1,6 @@
+[Unit]
+Description=Hermes disk guard
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/hermes/deploy/compose.env
+ExecStart=/opt/hermes/scripts/disk-guard.sh

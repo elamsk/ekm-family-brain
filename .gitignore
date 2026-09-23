@@ -1,0 +1,47 @@
+# ─── SECRETS: never commit. The Hermes home is the only place these live. ───
+.env
+.env.*
+!.env.example
+!env.example
+*.key
+*.pem
+*.p12
+*.pfx
+credentials.json
+client_secret*.json
+token.json
+auth.json
+*token*.json
+service-account*.json
+
+# ─── Hermes runtime state (belongs in the weekly encrypted backup, not git) ──
+.hermes/
+.hermes-assistant/
+hermes-home/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+sessions/
+checkpoints/
+pairing/
+platforms/
+logs/
+*.log
+
+# ─── Backups (encrypted archives never belong in git either) ───
+*.zip
+*.gpg
+*.age
+backups/
+
+# ─── Editors / OS / Python ───
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.DS_Store
+*.swp
+.idea/
+.vscode/

@@ -1,0 +1,8 @@
+[Unit]
+Description=Weekly encrypted backup of secrets and state
+[Timer]
+OnCalendar=Sun *-*-* 04:00 America/Los_Angeles
+Persistent=true
+RandomizedDelaySec=600
+[Install]
+WantedBy=timers.target

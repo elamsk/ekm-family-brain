@@ -1,0 +1,203 @@
+# ============================================================================
+# Hermes Agent — sanitized configuration for the family chief-of-staff.
+#
+# Deployed to:  $HERMES_HOME/config.yaml   (default: ~/.hermes-assistant)
+# Secrets:      NEVER here. They live in $HERMES_HOME/.env — see env.example.
+#
+# This file is committed to the `agent-system` repo. Every value below is
+# non-secret configuration. If you ever need to add a key, put the key in
+# .env and reference it by env var name, not by value.
+# ============================================================================
+
+timezone: "America/Los_Angeles"          # IANA name, not "PDT" — the abbreviation is only correct
+                                       # half the year. This handles PDT/PST automatically
+                                       # and drives all Hermes cron schedules.
+
+# ─── Primary brain ──────────────────────────────────────────────────────────
+# Flash-tier: this workload is read-heavy (inbox, calendar, news, markdown),
+# so input price dominates. Provider id is `gemini`; Hermes normalizes the
+# aliases google / google-gemini / google-ai-studio to it.
+# API key comes from GEMINI_API_KEY in .env.
+# Hermes resolves this provider's credential from GEMINI_API_KEY (or
+# GOOGLE_API_KEY) in $HERMES_HOME/.env — there is no api-key field in this file.
+model: "gemini-3.8-flash"
+
+# ─── Fallback ───────────────────────────────────────────────────────────────
+# Tried when the primary model errors. See docs/ARCHITECTURE.md for why this
+# is a second *cloud* tier rather than a local Ollama model on this host.
+# The fallback is deliberately the moving alias, not a pinned version.
+# A pinned primary gives predictable cost and behaviour; a pinned fallback
+# rots at the same rate and both legs die together — which is exactly what
+# happened on 2026-09-23, when gemini-2.5-flash and gemini-2.0-flash were
+# both stale and the whole chain 404'd. An alias cannot go out of date, so
+# the safety net survives a deprecation the primary does not.
+fallback_providers:
+  - provider: "gemini"
+    model: "gemini-flash-latest"
+    api_key_env: "GEMINI_API_KEY"
+
+# ─── AUXILIARY MODELS — PINNED ON PURPOSE. DO NOT SET BACK TO "auto". ───────
+# Every task below ships as provider:"auto", model:"" out of the box. In auto
+# mode Hermes walks a resolution chain (main model → OpenRouter → Nous Portal →
+# custom endpoint → Anthropic → direct API-key providers) and silently binds
+# whatever answers first. Two ways that bites you:
+#
+#   1. Context window. Compression needs a large-context model. If auto lands
+#      on a small-context fallback, compression fails mid-run — and scheduled
+#      jobs, which nobody is watching, are where that surfaces.
+#   2. Cost drift. An auxiliary that quietly resolves to a frontier model turns
+#      a cheap background task into an expensive one, invisibly.
+#
+# Pinning removes both. Flash-Lite is the cheapest tier with a large context
+# window, which is exactly the auxiliary profile.
+#
+# NOTE: `compression.abort_on_summary_failure` is false by default, so a
+# compression failure degrades rather than hard-stops — but it still loses the
+# summary. Pinning is what actually prevents it. See MODEL-CHANGE-CHECKLIST.md
+# before ever changing the primary model.
+auxiliary:
+  transient_retries: 2
+
+  # -- The three you asked for explicitly --
+  compression:                       # needs 64K+ context; Flash-Lite has far more
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 120
+  session_search:
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 30
+  title_generation:
+    enabled: true
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 30
+
+  # -- The rest. Same default, same failure mode, so same treatment. --
+  curator:                           # weekly memory curation (Phase 9.5)
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 600
+  memory_query_rewrite:
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 8
+  web_extract:                       # TikTok/Instagram ingestion leans on this
+    provider: "gemini"
+    model: "gemini-3.8-flash"        # extraction quality matters; still flash-tier
+    timeout: 360
+  vision:                            # screenshots / photos of documents
+    provider: "gemini"
+    model: "gemini-3.8-flash"
+    timeout: 120
+  monitor:
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 60
+  approval:                          # judges destructive-action prompts
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 30
+  mcp:
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 30
+  goal_judge:
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 60
+  background_review:
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 120
+  triage_specifier:
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 120
+  profile_describer:
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 60
+  skills_hub:
+    provider: "gemini"
+    model: "gemini-3.5-flash-lite"
+    timeout: 30
+
+# ─── Safety layers (Phase 2.2) ──────────────────────────────────────────────
+approvals:
+  mode: "smart"                 # prompt before destructive actions
+  cron_mode: "deny"             # UNATTENDED CONTEXT: deny, never prompt-and-wait.
+                                # Load-bearing. The agent runs on Elam's OWN Google
+                                # account, so every send needs approval (SOUL.md §1);
+                                # with no approver present, this makes a scheduled
+                                # send structurally impossible rather than merely
+                                # discouraged. See docs/SHARED-ACCOUNT-HARDENING.md.
+  timeout: 60
+  destructive_slash_confirm: true
+  mcp_reload_confirm: true
+
+security:
+  redact_secrets: true          # scrub key-shaped strings from output
+  tirith_enabled: true          # pre-execution command scanner
+  tirith_fail_open: false       # CHANGED FROM DEFAULT (true).
+                                # Default fails OPEN: if the scanner errors, the
+                                # command runs unscanned. For an always-on agent
+                                # with mail + drive + shell, fail CLOSED.
+  allow_private_urls: false     # blocks SSRF into the VM's own metadata/network
+  allow_lazy_installs: false    # CHANGED FROM DEFAULT (true). No silent package
+                                # installs on a host holding our credentials.
+
+# ─── Memory ─────────────────────────────────────────────────────────────────
+memory:
+  memory_enabled: true
+  user_profile_enabled: true    # builds a model of Elam over time
+  write_approval: false
+
+curator:                        # Phase 9.5 — prune/consolidate instead of growing forever
+  enabled: true
+  interval_hours: 168           # weekly
+  min_idle_hours: 2
+  stale_after_days: 30
+  archive_after_days: 90
+  backup:
+    enabled: true
+    keep: 5
+
+sessions:
+  auto_prune: true              # CHANGED FROM DEFAULT (false) — unbounded session
+  retention_days: 90            # growth is a disk-fill risk on a small VM
+  vacuum_after_prune: true
+
+# ─── Logging — bounded, because Phase 9.2 exists for a reason ───────────────
+logging:
+  level: "INFO"
+  max_size_mb: 5
+  backup_count: 3
+
+# ─── Telegram (Phase 7) ─────────────────────────────────────────────────────
+# Bot token lives in .env as TELEGRAM_BOT_TOKEN.
+#
+# `allow_from` is the "ignore strangers" control, and it is the ONLY one that
+# governs direct messages. It maps to TELEGRAM_ALLOWED_USERS and is fail-closed:
+# an empty value denies everyone rather than allowing everyone.
+#
+# Do NOT use `allowed_chats` for this. That key whitelists group/supergroup
+# chat IDs only — the adapter's own docstring reads "DMs are never filtered."
+# Setting it and expecting DM protection leaves the bot answering any stranger
+# who finds it.
+#
+# Values are NUMERIC Telegram user IDs, not @usernames. A username here will
+# never match, which fails closed (the bot ignores you) rather than open.
+# Get the number by messaging @userinfobot on Telegram.
+telegram:
+  allow_from: "701220126"              # Elam — numeric Telegram user ID (@Elamsk)
+  reactions: true
+
+gateway:
+  delivery_ledger: true         # dedupes delivery across restarts
+  strict: false
+
+cron:
+  wrap_response: true
+  output_retention: 50
+  session_db_timeout_seconds: 10
