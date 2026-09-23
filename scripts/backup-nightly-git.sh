@@ -9,13 +9,20 @@
 #   A systemd timer on the VM is outside the failure domain it protects.
 #   Agent-authored jobs (news brief, calendar preview) DO belong in Hermes cron,
 #   because those genuinely need the model. This one doesn't.
+# shellcheck disable=SC2034  # consumed by log()/die() in lib.sh
 SCRIPT_NAME="nightly-git-backup"
 source "$(dirname "$0")/lib.sh"
 
 push_repo() {
   local repo="$1" name="$2"
   [ -d "$repo/.git" ] || { log "skip ${name}: not a git repo at ${repo}"; return 0; }
-  cd "$repo"
+  cd "$repo" || { log "cannot cd into ${repo}"; return 1; }
+
+  # This runs as root from systemd while the repo is owned by the container
+  # user, so git's ownership check would abort the job at 03:15 with nobody
+  # watching. Idempotent, and scoped to this path only.
+  git config --global --get-all safe.directory 2>/dev/null | grep -qxF "$repo" \
+    || git config --global --add safe.directory "$repo"
 
   # Refuse to commit anything secret-shaped, even if .gitignore missed it.
   if git status --porcelain | grep -qE '\.env$|\.env\.|credentials\.json|token\.json|auth\.json|\.pem$|\.key$'; then

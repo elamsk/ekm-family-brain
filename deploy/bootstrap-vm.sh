@@ -173,8 +173,30 @@ if ! getent group hermes >/dev/null 2>&1; then
   sudo groupadd -g "$HERMES_GID" hermes 2>/dev/null || true
 fi
 sudo usermod -aG "$HERMES_GID" "$USER" 2>/dev/null || true
-[ -d "$HERMES_ROOT/workspace/family-brain" ] && \
-  sudo chmod -R g+rwX "$HERMES_ROOT/workspace/family-brain"
+# The brain repo is written by THREE identities: the container (uid 10001,
+# the agent saving notes), the nightly backup service (root, via systemd), and
+# the admin user editing by hand. Whoever writes first would otherwise leave
+# files the others cannot modify, and git additionally refuses to touch a repo
+# owned by someone else ("detected dubious ownership").
+#
+# Standard shared-repository setup: common group, group-writable, setgid on
+# directories so new files inherit the group, and core.sharedRepository so git
+# itself creates objects group-writable.
+BRAIN="$HERMES_ROOT/workspace/family-brain"
+if [ -d "$BRAIN" ]; then
+  sudo chgrp -R "$HERMES_GID" "$BRAIN"
+  sudo chmod -R g+rwX "$BRAIN"
+  sudo find "$BRAIN" -type d -exec chmod g+s {} +     # new files inherit the group
+  if [ -d "$BRAIN/.git" ]; then
+    sudo -u "#${HERMES_UID}" git -C "$BRAIN" config core.sharedRepository group || true
+  fi
+  # git's ownership check is per-user, so every identity that touches the repo
+  # needs the exemption. Without it the nightly backup dies on "dubious
+  # ownership" at 03:15 with nobody watching.
+  sudo git config --system --add safe.directory "$BRAIN" 2>/dev/null || true
+  git config --global --add safe.directory "$BRAIN" 2>/dev/null || true
+  echo "  ✓ brain repo shared between uid ${HERMES_UID}, root and $USER"
+fi
 echo "  ✓ /data and the brain are owned by ${HERMES_UID}; .env stays 0600"
 echo "  NOTE: editing /opt/hermes/data/.env now needs sudo — it belongs to the"
 echo "        container user, which is the point."
