@@ -131,9 +131,16 @@ chmod +x "$HERMES_ROOT"/scripts/*.sh
 # The brain repo: the agent's working directory.
 if [ ! -d "$HERMES_ROOT/workspace/family-brain/.git" ]; then
   mkdir -p "$HERMES_ROOT/workspace/family-brain"
-  cp -r "$REPO/." "$HERMES_ROOT/workspace/family-brain/" 2>/dev/null || true
-  rm -rf "$HERMES_ROOT/workspace/family-brain/deploy" \
-         "$HERMES_ROOT/workspace/family-brain/scripts"
+  # Copy ONLY the brain: markdown the agent reads and writes as its memory.
+  # Config, deploy manifests, scripts and docs belong to the system repo
+  # (Phase 5). Copying them here creates a second copy that drifts from the
+  # maintained one, and the agent would treat its own configuration as notes.
+  for d in admin food places learning templates; do
+    [ -d "$REPO/$d" ] && cp -r "$REPO/$d" "$HERMES_ROOT/workspace/family-brain/"
+  done
+  for f in news-preferences.md README.md readme.md .gitignore; do
+    [ -f "$REPO/$f" ] && cp "$REPO/$f" "$HERMES_ROOT/workspace/family-brain/"
+  done
   ( cd "$HERMES_ROOT/workspace/family-brain" && git init -q 2>/dev/null || true )
   echo "  brain seeded (add your GitHub remote later — see below)"
 fi
