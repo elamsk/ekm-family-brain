@@ -13,6 +13,12 @@ SWAP_GB="${SWAP_GB:-2}"
 HERMES_ROOT=/opt/hermes
 REPO="$HERMES_ROOT/repo"
 
+# MUST match the uid/gid baked into deploy/Dockerfile (`useradd --uid 10001`).
+# The container runs as this non-root user, and bind mounts keep host
+# ownership — so anything it must read or write has to be owned by this id.
+HERMES_UID="${HERMES_UID:-10001}"
+HERMES_GID="${HERMES_GID:-10001}"
+
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
 # ─── 1. Packages ────────────────────────────────────────────────────────────
@@ -147,6 +153,31 @@ if [ ! -f "$HERMES_ROOT/data/.env" ]; then
   chmod 600 "$HERMES_ROOT/data/.env"
   echo "  .env template created (EMPTY — fill it before starting)"
 fi
+
+# ─── 4b. Ownership for the bind mounts ──────────────────────────────────────
+# The container runs as uid 10001 (non-root, by design). A bind mount carries
+# the HOST's ownership through, so files created here as the admin user are
+# unreadable to it. Without this the gateway crash-loops on startup with:
+#   PermissionError: [Errno 13] Permission denied: '/data/.env'
+# .env is mode 600, so even reading it fails.
+say "Aligning ownership to the container user (uid ${HERMES_UID})"
+sudo chown -R "${HERMES_UID}:${HERMES_GID}" "$HERMES_ROOT/data"
+[ -d "$HERMES_ROOT/workspace/family-brain" ] && \
+  sudo chown -R "${HERMES_UID}:${HERMES_GID}" "$HERMES_ROOT/workspace/family-brain"
+sudo chmod 750 "$HERMES_ROOT/data"   # group = hermes, so the admin user can read config.yaml/SOUL.md
+[ -f "$HERMES_ROOT/data/.env" ] && sudo chmod 600 "$HERMES_ROOT/data/.env"
+
+# Let the admin user still read/edit the brain and read the config, without
+# giving away the secrets file. Group membership needs a re-login to apply.
+if ! getent group hermes >/dev/null 2>&1; then
+  sudo groupadd -g "$HERMES_GID" hermes 2>/dev/null || true
+fi
+sudo usermod -aG "$HERMES_GID" "$USER" 2>/dev/null || true
+[ -d "$HERMES_ROOT/workspace/family-brain" ] && \
+  sudo chmod -R g+rwX "$HERMES_ROOT/workspace/family-brain"
+echo "  ✓ /data and the brain are owned by ${HERMES_UID}; .env stays 0600"
+echo "  NOTE: editing /opt/hermes/data/.env now needs sudo — it belongs to the"
+echo "        container user, which is the point."
 
 # ─── 5. Build the image ─────────────────────────────────────────────────────
 say "Building the container image (slow on small SKUs — this is the RAM peak)"

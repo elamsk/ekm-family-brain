@@ -104,6 +104,18 @@ docker exec hermes-gateway hermes cron runs --limit 20
 systemctl list-timers 'hermes-*'
 ```
 
+**Gateway crash-loops with `PermissionError: '/data/.env'`**
+The container runs as uid 10001 (non-root). Bind mounts carry the host's
+ownership through, so anything owned by the admin user is unreadable to it —
+and `.env` is mode 600, so even reading fails. Fix:
+```bash
+sudo chown -R 10001:10001 /opt/hermes/data /opt/hermes/workspace/family-brain
+sudo chmod 750 /opt/hermes/data && sudo chmod 600 /opt/hermes/data/.env
+docker restart hermes-gateway hermes-webui
+```
+`bootstrap-vm.sh` does this automatically; you only hit it restoring by hand or
+after copying files in as another user. Editing `.env` afterwards needs `sudo`.
+
 **Disk full** — the disk guard should have warned. Manually:
 ```bash
 /opt/hermes/scripts/disk-guard.sh
