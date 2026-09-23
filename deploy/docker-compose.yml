@@ -12,20 +12,19 @@ services:
     image: hermes-assistant:0.19.0
     container_name: hermes-gateway
     restart: unless-stopped
-    # NO env-file directive here, deliberately. Two reasons:
+    # Restored after being removed in e7f365b. That removal reasoned the file
+    # was redundant because Hermes reads $HERMES_HOME/.env itself — true for
+    # Hermes' OWN config, but NOT for variables the gateway reads via
+    # os.getenv() in the authorization path (TELEGRAM_ALLOWED_USERS,
+    # GATEWAY_ALLOW_ALL_USERS, ...). Those must be in the PROCESS environment,
+    # which is what this provides.
     #
-    # 1. It is read by the docker compose CLIENT, as the invoking user.
-    #    $HERMES_HOME/.env is mode 600 owned by the container user (uid 10001),
-    #    so a non-root `docker compose up` fails with:
-    #      open /opt/hermes/data/.env: permission denied
-    #
-    # 2. It is redundant. Hermes loads $HERMES_HOME/.env itself at startup
-    #    (hermes_cli/env_loader.py: load_hermes_dotenv), and HERMES_HOME=/data
-    #    is bind-mounted below, so the container reads the same file directly
-    #    as uid 10001 - the only process that should ever see it.
-    #
-    # Dropping it also keeps secrets out of `docker inspect`, where those
-    # values are visible to anyone in the docker group.
+    # Consequence: the compose client must be able to read the file, so run
+    # `sudo docker compose ...` (the systemd unit already runs as root).
+    # Note also that `docker restart` does NOT re-read this — an env change
+    # needs `docker compose up -d --force-recreate`.
+    env_file:
+      - ${HERMES_HOME:-/opt/hermes/data}/.env
     environment:
       HERMES_HOME: /data
       TZ: ${TZ:-America/Los_Angeles}
@@ -50,7 +49,8 @@ services:
     container_name: hermes-webui
     restart: unless-stopped
     depends_on: [gateway]
-    # Same reasoning as the gateway above - Hermes reads /data/.env itself.
+    env_file:
+      - ${HERMES_HOME:-/opt/hermes/data}/.env
     environment:
       HERMES_HOME: /data
       TZ: ${TZ:-America/Los_Angeles}

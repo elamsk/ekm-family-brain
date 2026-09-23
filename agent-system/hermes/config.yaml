@@ -190,7 +190,17 @@ logging:
 # never match, which fails closed (the bot ignores you) rather than open.
 # Get the number by messaging @userinfobot on Telegram.
 telegram:
-  allow_from: "701220126"              # Elam — numeric Telegram user ID (@Elamsk)
+  # MUST be a YAML LIST, not a scalar string. The adapter does
+  #   allowed = {str(u).strip() for u in allow_from if str(u).strip()}
+  # so a bare string is iterated CHARACTER BY CHARACTER: "701220126" becomes
+  # {'7','0','1','2','6'} and the real user id never matches. The bot then
+  # silently blocks its own owner with "Blocked unauthorized user 701220126".
+  #
+  # Worse, the adapter treats allow_from as "the sole authority" and returns
+  # early, so TELEGRAM_ALLOWED_USERS in .env is never consulted and cannot be
+  # used to work around it.
+  allow_from:
+    - "701220126"                      # Elam — numeric Telegram user ID (@Elamsk)
   reactions: true
 
 gateway:
