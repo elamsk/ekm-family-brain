@@ -12,11 +12,23 @@ services:
     image: hermes-assistant:0.19.0
     container_name: hermes-gateway
     restart: unless-stopped
-    env_file:
-      - ${HERMES_HOME:-/opt/hermes/data}/.env
+    # NO env-file directive here, deliberately. Two reasons:
+    #
+    # 1. It is read by the docker compose CLIENT, as the invoking user.
+    #    $HERMES_HOME/.env is mode 600 owned by the container user (uid 10001),
+    #    so a non-root `docker compose up` fails with:
+    #      open /opt/hermes/data/.env: permission denied
+    #
+    # 2. It is redundant. Hermes loads $HERMES_HOME/.env itself at startup
+    #    (hermes_cli/env_loader.py: load_hermes_dotenv), and HERMES_HOME=/data
+    #    is bind-mounted below, so the container reads the same file directly
+    #    as uid 10001 - the only process that should ever see it.
+    #
+    # Dropping it also keeps secrets out of `docker inspect`, where those
+    # values are visible to anyone in the docker group.
     environment:
       HERMES_HOME: /data
-      TZ: ${TZ:-UTC}
+      TZ: ${TZ:-America/Los_Angeles}
     volumes:
       # Hermes home on the VM's ext4 managed disk — real POSIX locking, WAL works.
       - ${HERMES_HOME:-/opt/hermes/data}:/data
@@ -38,11 +50,10 @@ services:
     container_name: hermes-webui
     restart: unless-stopped
     depends_on: [gateway]
-    env_file:
-      - ${HERMES_HOME:-/opt/hermes/data}/.env
+    # Same reasoning as the gateway above - Hermes reads /data/.env itself.
     environment:
       HERMES_HOME: /data
-      TZ: ${TZ:-UTC}
+      TZ: ${TZ:-America/Los_Angeles}
     volumes:
       - ${HERMES_HOME:-/opt/hermes/data}:/data
       - ${BRAIN_REPO:-/opt/hermes/workspace/family-brain}:/workspace/family-brain
