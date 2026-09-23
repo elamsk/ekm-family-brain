@@ -16,10 +16,43 @@ REPO="$HERMES_ROOT/repo"
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
 # ─── 1. Packages ────────────────────────────────────────────────────────────
+# A freshly booted Azure Ubuntu VM runs cloud-init and unattended-upgrades for
+# the first several minutes, holding the dpkg/apt locks. Running apt-get
+# straight after `az vm create` fails with "Could not get lock
+# /var/lib/dpkg/lock-frontend" and, under `set -e`, kills this script at its
+# very first step — leaving a VM with the repo copied and nothing installed.
+# Wait the locks out instead of racing them.
+say "Waiting for cloud-init and any running package manager to finish"
+sudo cloud-init status --wait >/dev/null 2>&1 || true
+
+wait_for_apt() {
+  local waited=0 limit=600
+  while sudo fuser /var/lib/dpkg/lock-frontend /var/lib/apt/lists/lock \
+                   /var/cache/apt/archives/lock >/dev/null 2>&1; do
+    [ "$waited" -ge "$limit" ] && { echo "  apt still locked after ${limit}s"; return 1; }
+    [ $((waited % 30)) -eq 0 ] && echo "  apt is locked, waiting… (${waited}s)"
+    sleep 5; waited=$((waited + 5))
+  done
+  return 0
+}
+wait_for_apt || { echo "!! apt locked too long. Check: sudo fuser -v /var/lib/dpkg/lock-frontend"; exit 1; }
+echo "  ✓ package manager free"
+
 say "Installing packages"
-sudo apt-get update -qq
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
-  docker.io docker-compose-v2 git gnupg rclone zip unzip curl
+# Retry: a lock can still be grabbed between the check above and the call.
+apt_install() {
+  local attempt
+  for attempt in 1 2 3; do
+    if sudo DEBIAN_FRONTEND=noninteractive apt-get "$@"; then return 0; fi
+    echo "  apt attempt ${attempt}/3 failed; waiting 20s"
+    sleep 20; wait_for_apt || true
+  done
+  return 1
+}
+apt_install update -qq || { echo "!! apt-get update failed after 3 attempts"; exit 1; }
+apt_install install -y -qq \
+  docker.io docker-compose-v2 git gnupg rclone zip unzip curl \
+  || { echo "!! package install failed after 3 attempts"; exit 1; }
 sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER" || true
 
@@ -48,7 +81,16 @@ say "Data disk"
 DEV=/dev/disk/azure/scsi1/lun0
 sudo mkdir -p "$HERMES_ROOT/data"
 if ! [ -e "$DEV" ]; then
-  echo "  no data disk at $DEV — using the OS disk instead (fine, but no separate snapshots)"
+  echo "  WARNING: no data disk symlink at $DEV"
+  echo "  Attached unpartitioned disks (the data disk should be among these):"
+  lsblk -dn -o NAME,SIZE,TYPE | grep disk | sed 's/^/    /'
+  echo "  Continuing on the OS disk. Hermes will work, but the home is not on"
+  echo "  its own disk, so you cannot snapshot it separately. To fix: identify"
+  echo "  the device above, then re-run with DATA_DEV=/dev/sdX set."
+  DEV="${DATA_DEV:-}"
+fi
+if [ -z "$DEV" ] || ! [ -e "$DEV" ]; then
+  echo "  (no separate data disk in use)"
 elif mountpoint -q "$HERMES_ROOT/data"; then
   echo "  already mounted — skipping"
 else
