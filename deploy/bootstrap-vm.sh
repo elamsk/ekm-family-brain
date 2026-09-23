@@ -115,6 +115,11 @@ chmod 700 "$HERMES_ROOT/backups"
 
 cp -r "$REPO/deploy/." "$HERMES_ROOT/deploy/"
 cp -r "$REPO/scripts/." "$HERMES_ROOT/scripts/"
+# Belt and braces: systemd refuses a unit whose lines end in CR, and a cron
+# script with a CRLF shebang fails the same way bootstrap did.
+find "$HERMES_ROOT/deploy" "$HERMES_ROOT/scripts" -type f \
+     \( -name '*.sh' -o -name '*.service' -o -name '*.timer' \
+        -o -name '*.yml' -o -name '*.env' \) -exec sed -i 's/\r$//' {} +
 chmod +x "$HERMES_ROOT"/scripts/*.sh
 
 # The brain repo: the agent's working directory.

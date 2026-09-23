@@ -167,6 +167,15 @@ sudo chown -R "$USER" /opt/hermes
 mkdir -p /opt/hermes/repo
 tar xzf /tmp/hermes-repo.tgz -C /opt/hermes/repo
 rm -f /tmp/hermes-repo.tgz
+
+# Strip CR line endings. A Windows clone with core.autocrlf=true ships CRLF
+# files, and then `#!/usr/bin/env bash\r` is not a valid interpreter:
+#   /usr/bin/env: 'bash\r': No such file or directory
+# .gitattributes prevents this at checkout, but self-heal here too so the
+# deploy works from any client regardless of its git configuration.
+find /opt/hermes/repo -type f \( -name '*.sh' -o -name '*.service' \
+     -o -name '*.timer' -o -name '*.yml' -o -name '*.yaml' \) \
+     -exec sed -i 's/\r$//' {} +
 chmod +x /opt/hermes/repo/deploy/bootstrap-vm.sh
 SWAP_GB="${SWAP_GB:-2}" /opt/hermes/repo/deploy/bootstrap-vm.sh
 REMOTE
