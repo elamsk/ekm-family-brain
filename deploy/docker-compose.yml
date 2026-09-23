@@ -62,7 +62,22 @@ services:
     # calendar, drive and shell access.
     ports:
       - "127.0.0.1:9119:9119"
-    command: ["hermes", "serve", "--host", "0.0.0.0", "--port", "9119", "--skip-build"]
+    # `hermes dashboard`, NOT `hermes serve`. serve is the headless JSON-RPC /
+    # WebSocket backend for the desktop app and remote clients — its own help
+    # says "Headless: it never opens a browser UI", and hitting it in a browser
+    # returns:
+    #   {"error":"Headless backend (hermes serve): web UI disabled —
+    #             use `hermes dashboard` for the browser UI."}
+    # dashboard is the browser UI: config, API keys, sessions, cron jobs.
+    #
+    # --no-open because there is no browser in the container to launch.
+    # --skip-build because the package ships a prebuilt frontend
+    # (hermes_cli/web_dist) and npm is not installed in this image.
+    #
+    # 0.0.0.0 is required for the host's 127.0.0.1:9119 mapping to reach it,
+    # and Hermes treats that as a non-loopback bind, which ALWAYS requires an
+    # auth provider — set dashboard.basic_auth on the VM. See config.yaml.
+    command: ["hermes", "dashboard", "--host", "0.0.0.0", "--port", "9119", "--skip-build", "--no-open"]
     logging:
       driver: json-file
       options: { max-size: "20m", max-file: "5" }
