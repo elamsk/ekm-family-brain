@@ -88,3 +88,55 @@ Prefer a job that fails noisily over a job that skips quietly.
 
 Note the change, the date, and the reason in this repo, so the next person
 (you, in eight months) can see why the model is what it is.
+
+
+---
+
+## Incident log
+
+### 2026-09-23 — first deploy: every pinned model was already retired
+
+The first real model call failed:
+
+```
+HTTP 404: This model models/gemini-2.0-flash is no longer available.
+Please update your code to use models/gemini-3.6-flash
+```
+
+Both legs of the chain were stale. The config had been written against a model
+lineup that had moved on before the system ever ran.
+
+**What worked:** the fallback mechanism. The error names `gemini-2.0-flash`,
+the *fallback*, proving Hermes failed over from the primary as designed. The
+chain was sound; both models it pointed at were not.
+
+**What changed:**
+
+| | before | after |
+|---|---|---|
+| primary | `gemini-2.5-flash` | `gemini-3.8-flash` |
+| fallback | `gemini-2.0-flash` | `gemini-flash-latest` |
+| auxiliaries ×13 | `gemini-2.5-flash-lite` | `gemini-3.5-flash-lite` |
+| web_extract, vision | `gemini-2.5-flash` | `gemini-3.8-flash` |
+
+**The lesson, now baked into the design:** pin the primary, alias the fallback.
+A pinned primary gives predictable cost and behaviour. A pinned *fallback* rots
+at the same rate as the primary, so both die on the same day and the safety net
+is gone precisely when it is needed. `gemini-flash-latest` cannot go out of
+date. This costs a little predictability in the fallback leg and buys a safety
+net that survives deprecation.
+
+**Also worth noting:** `gemini-2.5-flash` was still listed as available in the
+account, yet the primary still failed and fell through. That was not fully
+explained at the time. If the primary errors again, capture the *primary's* own
+error rather than the fallback's — the chain reports only the last failure.
+
+**How to get the real list**, rather than trusting any model name from memory:
+
+```bash
+docker exec hermes-gateway sh -c 'curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY"' \
+  | python3 -c "import sys,json;[print(f\"{m['name'].split('/')[-1]:38} in:{m.get('inputTokenLimit',0):>9}  {','.join(m.get('supportedGenerationMethods',[]))}\") for m in json.load(sys.stdin).get('models',[])]" | sort
+```
+
+Do this before every model change. Model names from training data are stale by
+construction.

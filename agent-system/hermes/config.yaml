@@ -20,14 +20,20 @@ timezone: "America/Los_Angeles"          # IANA name, not "PDT" — the abbrevia
 # API key comes from GEMINI_API_KEY in .env.
 # Hermes resolves this provider's credential from GEMINI_API_KEY (or
 # GOOGLE_API_KEY) in $HERMES_HOME/.env — there is no api-key field in this file.
-model: "gemini-2.5-flash"
+model: "gemini-3.8-flash"
 
 # ─── Fallback ───────────────────────────────────────────────────────────────
 # Tried when the primary model errors. See docs/ARCHITECTURE.md for why this
 # is a second *cloud* tier rather than a local Ollama model on this host.
+# The fallback is deliberately the moving alias, not a pinned version.
+# A pinned primary gives predictable cost and behaviour; a pinned fallback
+# rots at the same rate and both legs die together — which is exactly what
+# happened on 2026-09-23, when gemini-2.5-flash and gemini-2.0-flash were
+# both stale and the whole chain 404'd. An alias cannot go out of date, so
+# the safety net survives a deprecation the primary does not.
 fallback_providers:
   - provider: "gemini"
-    model: "gemini-2.0-flash"
+    model: "gemini-flash-latest"
     api_key_env: "GEMINI_API_KEY"
 
 # ─── AUXILIARY MODELS — PINNED ON PURPOSE. DO NOT SET BACK TO "auto". ───────
@@ -55,66 +61,66 @@ auxiliary:
   # -- The three you asked for explicitly --
   compression:                       # needs 64K+ context; Flash-Lite has far more
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 120
   session_search:
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 30
   title_generation:
     enabled: true
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 30
 
   # -- The rest. Same default, same failure mode, so same treatment. --
   curator:                           # weekly memory curation (Phase 9.5)
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 600
   memory_query_rewrite:
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 8
   web_extract:                       # TikTok/Instagram ingestion leans on this
     provider: "gemini"
-    model: "gemini-2.5-flash"        # extraction quality matters; still flash-tier
+    model: "gemini-3.8-flash"        # extraction quality matters; still flash-tier
     timeout: 360
   vision:                            # screenshots / photos of documents
     provider: "gemini"
-    model: "gemini-2.5-flash"
+    model: "gemini-3.8-flash"
     timeout: 120
   monitor:
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 60
   approval:                          # judges destructive-action prompts
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 30
   mcp:
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 30
   goal_judge:
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 60
   background_review:
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 120
   triage_specifier:
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 120
   profile_describer:
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 60
   skills_hub:
     provider: "gemini"
-    model: "gemini-2.5-flash-lite"
+    model: "gemini-3.5-flash-lite"
     timeout: 30
 
 # ─── Safety layers (Phase 2.2) ──────────────────────────────────────────────
