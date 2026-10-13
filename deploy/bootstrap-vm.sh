@@ -29,8 +29,33 @@ say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 # /var/lib/dpkg/lock-frontend" and, under `set -e`, kills this script at its
 # very first step — leaving a VM with the repo copied and nothing installed.
 # Wait the locks out instead of racing them.
+# ─── 0. Which distro? ───────────────────────────────────────────────────────
+# Supports Debian/Ubuntu (apt) and Fedora/RHEL (dnf). Everything after this
+# point is distro-neutral.
+. /etc/os-release
+case "${ID:-}${ID_LIKE:-}" in
+  *debian*|*ubuntu*) PKG=apt  ;;
+  *fedora*|*rhel*|*centos*) PKG=dnf ;;
+  *) echo "  unrecognised distro '${ID:-?}' — assuming apt"; PKG=apt ;;
+esac
+echo "  distro: ${PRETTY_NAME:-$ID}  (package manager: $PKG)"
+
+# SELinux is Enforcing by default on Fedora/RHEL. Bind mounts into containers
+# are DENIED unless relabelled, which looks exactly like a uid permission bug:
+# the container cannot read /data/.env and the gateway crash-loops. The compose
+# file carries :z on every bind mount, which performs that relabel. Nothing to
+# do here but say so, because the symptom is otherwise baffling.
+if command -v getenforce >/dev/null 2>&1; then
+  echo "  SELinux: $(getenforce) — compose mounts carry :z to relabel them"
+fi
+
 say "Waiting for cloud-init and any running package manager to finish"
 sudo cloud-init status --wait >/dev/null 2>&1 || true
+if [ "$PKG" = "dnf" ]; then
+  # dnf serialises on its own transaction lock and retries internally, so the
+  # apt-specific wait below does not apply.
+  echo "  (dnf handles its own locking)"
+fi
 
 wait_for_apt() {
   local waited=0 limit=600
@@ -56,10 +81,27 @@ apt_install() {
   done
   return 1
 }
-apt_install update -qq || { echo "!! apt-get update failed after 3 attempts"; exit 1; }
-apt_install install -y -qq \
-  docker.io docker-compose-v2 git gnupg rclone zip unzip curl \
-  || { echo "!! package install failed after 3 attempts"; exit 1; }
+if [ "$PKG" = "apt" ]; then
+  wait_for_apt || { echo "!! apt locked too long"; exit 1; }
+  apt_install update -qq || { echo "!! apt-get update failed after 3 attempts"; exit 1; }
+  apt_install install -y -qq \
+    docker.io docker-compose-v2 git gnupg rclone zip unzip curl \
+    || { echo "!! package install failed after 3 attempts"; exit 1; }
+else
+  # Fedora/RHEL. Docker CE from Docker's own repo rather than Fedora's
+  # moby-engine: it ships the `docker compose` v2 plugin under the same name
+  # and command used everywhere else here, so nothing downstream changes.
+  # ffmpeg-free is the main-repo build (plain ffmpeg lives in RPM Fusion).
+  if ! command -v docker >/dev/null 2>&1; then
+    sudo dnf -y install dnf-plugins-core
+    sudo dnf config-manager --add-repo https://download.docker.com/linux/fedora/docker-ce.repo 2>/dev/null \
+      || sudo dnf config-manager addrepo --from-repofile=https://download.docker.com/linux/fedora/docker-ce.repo
+    sudo dnf -y install docker-ce docker-ce-cli containerd.io docker-compose-plugin \
+      || { echo "!! docker install failed"; exit 1; }
+  fi
+  sudo dnf -y install git gnupg2 rclone zip unzip curl ripgrep ffmpeg-free \
+    || { echo "!! package install failed"; exit 1; }
+fi
 sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER" || true
 
@@ -67,7 +109,10 @@ sudo usermod -aG docker "$USER" || true
 # On a 1-2 GiB VM the docker build is the peak. Swap turns an OOM kill into
 # slowness, which is the right trade on the smallest SKUs.
 say "Swap (${SWAP_GB}G)"
-if [ -f /swapfile ]; then
+if [ "$(swapon --show --noheadings 2>/dev/null | wc -l)" -gt 0 ] && [ ! -f /swapfile ]; then
+  echo "  swap already active ($(swapon --show=NAME,SIZE --noheadings | tr '\n' ' ')) — skipping"
+  echo "  (Fedora enables zram swap by default; that is sufficient)"
+elif [ -f /swapfile ]; then
   echo "  /swapfile exists — skipping"
 else
   sudo fallocate -l "${SWAP_GB}G" /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=$((SWAP_GB*1024))

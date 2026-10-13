@@ -1,3 +1,40 @@
+# Deploying
+
+Azure is the documented default below. For a **local VM or bare metal** —
+Fedora, Ubuntu, anything with systemd — skip to section 3 and run
+`sudo deploy/setup.sh`, which handles packages, swap, disks, image, units,
+secrets and verification in one pass. `provision-azure.sh` is only needed to
+create the Azure machine itself.
+
+## Fedora / RHEL notes
+
+`bootstrap-vm.sh` detects the distro from `/etc/os-release` and uses dnf. Three
+differences are worth knowing, because two of them produce confusing symptoms:
+
+**SELinux is Enforcing by default.** Bind mounts into containers are denied
+unless relabelled. The compose file carries `:z` on all four mounts, which does
+the relabel. Without it the gateway crash-loops with a permission error on
+`/data/.env` that looks *exactly* like a uid/ownership problem but is fixed
+somewhere else entirely. If you ever see that on Fedora, check
+`sudo ausearch -m avc -ts recent` before chasing file ownership.
+
+**Docker comes from Docker's own repo**, not Fedora's `moby-engine`, so that
+`docker compose` v2 is available under the same name used everywhere here.
+Fedora also ships Podman by default; this stack is not tested on it.
+
+**Swap already exists.** Fedora enables zram swap out of the box, so the
+bootstrap detects active swap and skips creating a swapfile. Related: the
+data-disk auto-detection explicitly excludes `zram*`. An earlier version picked
+`/dev/zram0` on a host where the root disk could not be resolved — formatting
+it would have put the Hermes home on a RAM disk and wiped all state on every
+reboot.
+
+`ffmpeg-free` is installed rather than `ffmpeg`, which lives in RPM Fusion.
+Voice-memo transcription works with it; if you hit a codec gap, add RPM Fusion
+and swap the package.
+
+---
+
 # Deploying to Azure
 
 ## The one-command path

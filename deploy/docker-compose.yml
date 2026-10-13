@@ -29,10 +29,17 @@ services:
       HERMES_HOME: /data
       TZ: ${TZ:-America/Los_Angeles}
     volumes:
-      # Hermes home on the VM's ext4 managed disk — real POSIX locking, WAL works.
-      - ${HERMES_HOME:-/opt/hermes/data}:/data
+      # The :z suffix relabels bind mounts for SELinux (shared between the two
+      # containers). On Fedora/RHEL, where SELinux is Enforcing by default,
+      # WITHOUT it the container is denied access to these paths and the
+      # gateway crash-loops with a permission error on /data/.env — identical
+      # in appearance to a uid/ownership problem, and fixed somewhere else
+      # entirely. On Debian/Ubuntu it is a harmless no-op.
+      #
+      # Hermes home on the host's ext4 disk — real POSIX locking, WAL works.
+      - ${HERMES_HOME:-/opt/hermes/data}:/data:z
       # The markdown brain, so the agent can read and write it directly.
-      - ${BRAIN_REPO:-/opt/hermes/workspace/family-brain}:/workspace/family-brain
+      - ${BRAIN_REPO:-/opt/hermes/workspace/family-brain}:/workspace/family-brain:z
     command: ["hermes", "gateway", "run"]
     healthcheck:
       test: ["CMD", "hermes", "gateway", "status"]
@@ -55,8 +62,8 @@ services:
       HERMES_HOME: /data
       TZ: ${TZ:-America/Los_Angeles}
     volumes:
-      - ${HERMES_HOME:-/opt/hermes/data}:/data
-      - ${BRAIN_REPO:-/opt/hermes/workspace/family-brain}:/workspace/family-brain
+      - ${HERMES_HOME:-/opt/hermes/data}:/data:z
+      - ${BRAIN_REPO:-/opt/hermes/workspace/family-brain}:/workspace/family-brain:z
     # 127.0.0.1 ONLY. Reach it with:  ssh -L 9119:127.0.0.1:9119 <vm>
     # Never publish this port to the internet: it fronts an agent with mail,
     # calendar, drive and shell access.
