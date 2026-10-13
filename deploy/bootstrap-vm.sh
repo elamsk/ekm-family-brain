@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # ============================================================================
-# Runs ON the Azure VM. Called by provision-azure.sh, but safe to run by hand.
+# Runs ON the target VM — Azure, a local VM, or bare metal. Called by
+# provision-azure.sh for Azure, but safe and supported to run standalone.
 # Covers DEPLOY-AZURE.md sections 2-6: packages, swap, data disk, repo layout,
 # image build, systemd units.
 #
@@ -22,7 +23,7 @@ HERMES_GID="${HERMES_GID:-10001}"
 say() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
 # ─── 1. Packages ────────────────────────────────────────────────────────────
-# A freshly booted Azure Ubuntu VM runs cloud-init and unattended-upgrades for
+# A freshly booted Ubuntu VM runs cloud-init and unattended-upgrades for
 # the first several minutes, holding the dpkg/apt locks. Running apt-get
 # straight after `az vm create` fails with "Could not get lock
 # /var/lib/dpkg/lock-frontend" and, under `set -e`, kills this script at its
@@ -62,7 +63,7 @@ apt_install install -y -qq \
 sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER" || true
 
-# ─── 2. Swap — Azure Ubuntu images ship with none ───────────────────────────
+# ─── 2. Swap — cloud Ubuntu images usually ship with none ──────────────────
 # On a 1-2 GiB VM the docker build is the peak. Swap turns an OOM kill into
 # slowness, which is the right trade on the smallest SKUs.
 say "Swap (${SWAP_GB}G)"
@@ -84,7 +85,39 @@ grep -q '^vm.swappiness' /etc/sysctl.conf || echo 'vm.swappiness=10' | sudo tee 
 # Use the stable Azure LUN path, not /dev/sdc — device letters can move
 # across reboots and you do NOT want to mkfs the wrong disk.
 say "Data disk"
-DEV=/dev/disk/azure/scsi1/lun0
+# Prefer an explicit override, then the Azure LUN symlink, then any attached
+# disk that has no partitions and is not the root disk. Keeps this script
+# usable on a local VM (VirtualBox/Proxmox/Hyper-V) as well as Azure.
+DEV="${DATA_DEV:-}"
+if [ -z "$DEV" ] && [ -e /dev/disk/azure/scsi1/lun0 ]; then
+  DEV=/dev/disk/azure/scsi1/lun0                      # Azure data disk
+fi
+if [ -z "$DEV" ]; then
+  # Auto-detect a spare disk. This formats whatever it picks, so it is
+  # deliberately conservative: it refuses to guess rather than risk mkfs on the
+  # wrong device. An earlier version selected /dev/zram0 (a compressed RAM
+  # disk) on a host where the root disk could not be resolved — the Hermes home
+  # would have been wiped on every reboot.
+  _root_src=$(findmnt -no SOURCE / 2>/dev/null)
+  _root_disk=$(lsblk -no PKNAME "$_root_src" 2>/dev/null | head -1)
+  if [ -z "$_root_disk" ]; then
+    echo "  cannot determine the root disk — skipping auto-detection"
+    echo "  (pass DATA_DEV=/dev/sdX explicitly if you have a separate data disk)"
+  else
+    while read -r _name _type _size; do
+      [ "$_type" = "disk" ] || continue
+      [ "$_name" = "$_root_disk" ] && continue
+      # Virtual/removable block devices are never a data disk.
+      case "$_name" in zram*|loop*|ram*|sr*|fd*|dm-*|md*) continue ;; esac
+      # Must already carry no partitions...
+      [ -n "$(lsblk -no NAME "/dev/$_name" | tail -n +2)" ] && continue
+      # ...and be plausibly sized (guards against tiny pseudo-devices).
+      [ "${_size:-0}" -lt 4294967296 ] && continue      # < 4 GiB
+      DEV="/dev/$_name"; break
+    done < <(lsblk -dbn -o NAME,TYPE,SIZE)
+    [ -n "$DEV" ] && echo "  auto-detected spare disk: $DEV"
+  fi
+fi
 sudo mkdir -p "$HERMES_ROOT/data"
 if ! [ -e "$DEV" ]; then
   echo "  WARNING: no data disk symlink at $DEV"
